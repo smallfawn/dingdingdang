@@ -1,0 +1,10 @@
+version: '3'
+services:
+  godonggocar:
+    image: registry.cn-hangzhou.aliyuncs.com/smallfawn/linux_amd64_ddd
+    volumes:
+      - $PWD/config.json:/app/config.json
+      - $PWD/data.json:/app/data.json
+    ports:
+      - "12345:12345"
+    restart: unless-stopped

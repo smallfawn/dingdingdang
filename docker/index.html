@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GoDongGoCar Web</title>
+    <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.3.3/css/bootstrap.css" rel="stylesheet" />
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: Arial, sans-serif;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 2rem;
+        }
+
+        .box {
+            width: 90%;
+            max-width: 400px;
+            padding: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            font-size: 1.5rem;
+        }
+
+        .form-group label {
+            font-size: 0.9rem;
+        }
+
+        #submit-button {
+            width: 100%;
+            margin-top: 15px;
+        }
+
+        .countdown-timer {
+            margin-left: 10px;
+            font-weight: bold;
+        }
+
+        #uid-display,
+        #status-check-info {
+            text-align: center;
+            /* Center the text horizontally */
+            width: 100%;
+            /* Ensure it takes up the full width */
+            display: flex;
+            /* Use flexbox for centering */
+            justify-content: center;
+            /* Center horizontally */
+            align-items: center;
+            /* Center vertically */
+        }
+
+        #status-box {
+            width: 100%;
+            color: red;
+            /* Ensure the status box takes the full width available */
+            max-width: 400px;
+            /* Optional: limit the maximum width */
+            padding: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: center;
+            /* Center content horizontally */
+            align-items: center;
+            /* Center content vertically */
+            text-align: center;
+            /* Center-align the text inside the box */
+            margin: 0 auto;
+            /* Center the box itself within its container */
+        }
+
+        .text-sm {
+            font-size: 0.8rem;
+            word-break: break-word;
+        }
+
+        #qr-code {
+            margin-top: 20px;
+        }
+
+        @media (max-width: 576px) {
+            h1 {
+                font-size: 1.25rem;
+            }
+
+            .form-group label {
+                font-size: 0.85rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1 id="name"></h1>
+
+        <div class="box">
+            <div class="form-group">
+                <label for="input1">账号</label>
+                <input type="text" class="form-control" id="input1" required />
+            </div>
+
+            <div class="form-group">
+                <label for="input2">密码</label>
+                <input type="password" class="form-control" id="input2" required />
+            </div>
+
+            <div class="form-group">
+                <label for="remarks">备注</label>
+                <input type="text" class="form-control" id="remarks" />
+            </div>
+
+            <button id="submit-button" type="button" class="btn btn-primary btn-block">
+                提交 <span id="countdown-timer" class="countdown-timer"></span>
+            </button>
+
+            <div id="uid-display" class="mt-3 text-sm"></div>
+            <div id="status-check-info" class="mt-3 text-sm"></div>
+        </div>
+    </div>
+
+    <dialog id="sms-dialog" class="box">
+        <h5>本次登录需要验证码，请输入短信验证码</h5>
+        <input type="text" id="sms-code" class="form-control mb-3" placeholder="验证码" required />
+        <button class="btn btn-primary" id="sms-submit">提交验证码</button>
+        <button class="btn btn-secondary" id="sms-cancel">取消</button>
+    </dialog>
+    <dialog id="qr-dialog" class="box">
+        <h5>wxpusher 对接</h5>
+        <img id="qr-code" src="" alt="QR Code" style="display: none; max-width: 100%" />
+        <button class="btn btn-primary" id="qr-submit">确认扫码</button>
+    </dialog>
+    <div id="status-box" class="box mt-3"></div>
+
+    <script>
+        /**
+         * WXPUSHER 可行性实验
+         * */
+        const appState = {
+            uid: "",
+            countdownInterval: null,
+            pauseMonitoring: false, // This flag controls whether the loop is paused
+            isPush: false,
+        };
+        const $ = (selector) => document.querySelector(selector);
+        const setTextContent = (selector, text) =>
+            ($(selector).textContent = text);
+        const $$ = (selector) => document.querySelectorAll(selector);
+        const statusCheckInfo = $("#status-check-info");
+
+        function resetForm() {
+            appState.uid = "";
+            clearInterval(appState.countdownInterval);
+            $$(".form-control").forEach((input) => (input.value = ""));
+            setTextContent("#uid-display", "");
+            setTextContent("#countdown-timer", "");
+            enableSubmitButton();
+        }
+
+        async function submitForm() {
+            const id = $("#input1").value.trim();
+            const pw = $("#input2").value.trim();
+            const remarks = $("#remarks").value || "GoDongGoCar";
+
+            if (!id || !pw) {
+                alert("请输入账号和密码");
+                return;
+            }
+
+            const loginResult = await apiRequest("/login", { id, pw, remarks });
+            if (loginResult?.status === "pass") {
+                appState.uid = loginResult.uid;
+                setTextContent("#uid-display", loginResult.msg);
+                alert("提交成功");
+                startCountdown(60);
+                disableSubmitButton();
+                await monitorLoginStatus();
+            }
+        }
+
+        function startCountdown(seconds) {
+            setTextContent("#countdown-timer", `(${seconds}s)`);
+            appState.countdownInterval = setInterval(() => {
+                seconds--;
+                setTextContent("#countdown-timer", `(${seconds}s)`);
+                if (seconds <= 0) {
+                    clearInterval(appState.countdownInterval);
+                    enableSubmitButton();
+                }
+            }, 1000);
+        }
+
+        async function monitorLoginStatus() {
+            for (let i = 0; i < 30; i++) {
+                // Pause the loop if the flag is set to true
+                if (appState.pauseMonitoring) {
+                    return;
+                }
+
+                statusCheckInfo.textContent = `正在进行第${i + 1}次检查状态`;
+                await delay(2000);
+                const result = await checkLoginStatus();
+                if (result) break;
+            }
+        }
+
+        const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+        async function checkLoginStatus() {
+            const result = await apiRequest("/check", { uid: appState.uid });
+            if (!result) return false;
+
+            setTextContent("#uid-display", result.msg);
+
+            if (result.status === "SMS") {
+                appState.pauseMonitoring = true; // Set the flag to pause the loop
+                openDialog($("#sms-dialog"));
+            } else if (["pass", "error", "wrongSMS"].includes(result.status)) {
+                if (result.status == "pass") {
+                    if (appState.isPush) {
+                        if (getPtPin(result.cookie)) {
+                            await wxpusherApi(getPtPin(result.cookie));
+                        }
+                    }
+                }
+                alert(
+                    result.status === "pass" ? "登录成功" : `登录失败: ${result.msg}`
+                );
+                resetForm();
+                statusCheckInfo.textContent = "";
+                return true;
+            }
+            return false;
+        }
+
+        async function submitSmsCode() {
+            const code = $("#sms-code").value.trim();
+            if (!code) {
+                alert("请输入验证码");
+                return;
+            }
+
+            const result = await apiRequest("/sms", { uid: appState.uid, code });
+            closeDialog($("#sms-dialog"));
+            alert(result?.status === "pass" ? "提交验证码成功" : "验证码错误");
+
+            if (result?.status === "pass") {
+                //alert("提交验证码成功");
+                appState.pauseMonitoring = false; // 重置标志以继续循环
+                await monitorLoginStatus(); // 恢复监控
+            } else {
+                alert("验证码错误，请重试");
+                openDialog($("#sms-dialog")); // 重新打开对话框
+            }
+        }
+
+        function openDialog(dialog) {
+
+            dialog.showModal();
+
+        }
+
+        function closeDialog(dialog) {
+
+            dialog.close();
+
+        }
+
+        function enableSubmitButton() {
+            $("#submit-button").disabled = false;
+        }
+
+        function disableSubmitButton() {
+            $("#submit-button").disabled = true;
+        }
+
+        async function checkStatus() {
+            const result = await apiRequest("/status");
+            if (result) {
+                setTextContent("#status-box", result.msg);
+                setTextContent("#name", result.data.name);
+                appState.isPush = result.data.isPush;
+            } else {
+                setTextContent("#status-box", "Error fetching status.");
+            }
+        }
+
+        async function apiRequest(url, data = null) {
+            try {
+                const options = {
+                    method: data ? "POST" : "GET",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                };
+                if (data) {
+                    options.body = JSON.stringify(data);
+                }
+
+                const response = await fetch(url, options);
+                return await response.json();
+            } catch (error) {
+                console.error("API Error:", error);
+                // alert("网络错误，请稍后再试");
+                return null;
+            }
+        }
+        function showQrCode(qrCodeUrl) {
+            openDialog($("#qr-dialog"));
+            const qrCodeImage = $("#qr-code");
+            qrCodeImage.src = qrCodeUrl;
+            qrCodeImage.style.display = "block";
+        }
+        function wxpusherApi(ptpin) {
+            const result = apiRequest("/qrcode", { params: ptpin }).then(
+                (result) => {
+                    if (result && result.status === "pass") {
+                        showQrCode(result.data);
+                    } else {
+                        alert("获取二维码失败");
+                    }
+                }
+            );
+        }
+        function getPtPin(str) {
+            const match = str.match(/pt_pin=([^;]+)/);
+            return match ? match[1] : "";
+        }
+
+
+
+        document.addEventListener("DOMContentLoaded", checkStatus);
+        $("#submit-button").addEventListener("click", submitForm);
+        $("#sms-submit").addEventListener("click", submitSmsCode);
+        $("#sms-cancel").addEventListener("click", () => closeDialog($("#sms-dialog")));
+        $("#qr-submit").addEventListener("click", () => closeDialog($("#qr-dialog")));
+    </script>
+</body>
+
+</html>

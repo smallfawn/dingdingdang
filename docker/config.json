@@ -1,0 +1,12 @@
+{
+    "name": "test",
+    "notice": "test",
+    "ql_host": "http://127.0.0.1:5700",
+    "ql_app_id": "xxxxx",
+    "ql_app_secret": "xxxxx",
+    "ql_isNewVersion":true,
+    "key": "xxxxx",
+    "wxpusherAppToken":"",
+    "wxpusherAdminUid":"",
+    "isWxPusher":true
+}
