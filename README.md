@@ -1,5 +1,17 @@
-# 正式版V1已发布
-# V2版本 演示gc.onecc.cc
+
+
+京东账密登录协议版本 已开放购买 
+
+
+求转发  转发送体验卡100次
+ JD协议版本已发布
+
+购买地址
+http://smshop.back1.idcfengye.com/
+
+http://smjd.back1.idcfengye.com/
+体验地址
+
 
 自用 学习 爱用不用 我自己写的我想咋写咋写
 ```shell
